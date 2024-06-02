@@ -4,6 +4,23 @@ import { User } from "../models/user.model.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import { MyApiResponse } from "../utils/apiResponse.js";
 
+const generateRefreshAndAccessToken = async(userId) => {
+    try {
+       const user = await User.findById({userId})
+       const AccessToken = user.generateAccessToken()
+       const RefreshToken = user.generateRefreshToken()
+       user.RefreshToken = RefreshToken
+
+       await user.save({validateBeforeSave:false})
+
+       return {AccessToken, RefreshToken}
+
+    } 
+    catch (error) {
+        throw new ApiError(500, "SomeThing went wrong while generating access and refresh token")
+    }
+}
+
 
 const userRegister = asyncHandler(async (req,res,next) => {
     // take the data from the frontend
@@ -113,6 +130,59 @@ const userRegister = asyncHandler(async (req,res,next) => {
 })
 
 
+const loginUser = asyncHandler(async(req,res,next)=>{
+    // took data from the frontend part- req.body
+    // validate the data through email aur username-not empty
+    // check the user is exist in database or not
+    // Then check for password 
+    // give that user access aur refresh token
+    // send response in cookies
 
+    const {username,password,email} = req.body
 
-export {userRegister}
+    if(email === "" || username === ""){
+         throw new ApiError(401, "All fields is required")
+    }
+
+    // const existedUserEmail = await User.findOne({email});
+    // const existedUsername = await User.findOne({username});
+
+    const user = await User.findOne({
+        $or:[{username},{email}]        // this is an instance of our database...ki yrr haa ye hamare database mai h
+    })
+
+    if (!user){
+        throw new ApiError(404, "User not exist")
+    }
+
+    const isPasswordCorrect = await user.isPasswordCorrect(password)  // here we use small user -> jo return hua h hamare DB se uska instance, bigger User hum jb use krte h jab database se baat krni ho kyuki model big vaale se banaya h 
+
+    if (!isPasswordCorrect) {
+        throw new ApiError(401, "password is incorrect");
+    }
+
+    const {AccessToken,RefreshToken} = await generateRefreshAndAccessToken(user._id)
+
+    const loggedUser = await User.findById(user._id).select("-password -RefreshToken")
+
+    const options = {
+        httpOnly:true,      // This helps us ki koi bhi frontend se cookies ko ched nahi payega server se hi changes honge
+        secure:true
+    }
+
+   return  res.status(200)
+    .cookie("AccessToken", AccessToken, options)
+    .cookie("RefreshToken", RefreshToken, options)
+    .json(new MyApiResponse(
+        200,
+        {user: AccessToken,RefreshToken,loggedUser},
+        "User Logged in successfully"
+    ))
+
+})
+
+export {userRegister, loginUser}
+
+const generateRefreshAndAccessToke = (userId) =>{
+    
+}
