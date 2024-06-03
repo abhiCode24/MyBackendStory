@@ -3,6 +3,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.model.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import { MyApiResponse } from "../utils/apiResponse.js";
+import { jwt } from "jsonwebtoken";
 
 const generateRefreshAndAccessToken = async(userId) => {
     try {
@@ -212,4 +213,54 @@ const logoutUser = asyncHandler(async(req,res)=>{
     .json(new MyApiResponse(200, {}, "Logged Out User"))
 })
 
-export {userRegister, loginUser, logoutUser}
+const generateRefreshToken = asyncHandler(async()=>{
+    // kyuki user ka access token expire ho gya h so
+    // usko refresh krvane ke liye vo apna refresh token bhejga jo ki db mai store hota h 
+    // so cookies se hum le lenge
+    // then decode krlenge jwt se ki jo aya h aur jo backend mai save h dono same h ki nahi
+    // fr jab mil gya then hume vaha se _id ka access mil jaega toh vaha se user ka instance mil jaega
+    // then check jo frontend se refresh token aaya aur jo uss particular user ka refresh token agr barabar nahi h toh error
+    // then newRefresh token generate krlo upr jo fn banaya tha usse 
+    // and then cookie mai data bhej do fr se
+
+    const userSendingRefreshToken = await req.cookie.refreshToken || req.body.refreshToken
+
+    if (!userSendingRefreshToken) {
+        throw new ApiError(401, "Invalid token")
+    }
+
+    const decoded = await jwt.verify(userSendingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
+
+    const user = await User.findById(decoded._id)
+
+    if(!user){
+        throw new ApiError(401, "Invalid refresh token")
+    }
+
+    if (userSendingRefreshToken !== user.refreshToken) {
+        throw new ApiError(401, "Invalid refresh token")
+    }
+
+    const {AccessToken, newRefreshToken} = await generateRefreshAndAccessToken(user._id)
+    
+    const options = {
+        httpOnly:true,
+        secure:true
+    }
+
+    res.status(200)
+    .cookie("AccessToken", AccessToken, options)
+    .cookie("RefreshToken", newRefreshToken,options)
+    .json(
+        new MyApiResponse(200,
+            {
+                AccessToken,
+                RefreshToken:newRefreshToken
+            },
+            "Accessed Token Refreshed"
+
+        )
+    )
+})
+
+export {userRegister, loginUser, logoutUser,generateRefreshToken}
