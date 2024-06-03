@@ -9,7 +9,7 @@ const generateRefreshAndAccessToken = async(userId) => {
        const user = await User.findById({userId})
        const AccessToken = user.generateAccessToken()
        const RefreshToken = user.generateRefreshToken()
-       user.RefreshToken = RefreshToken
+       user.refreshToken = RefreshToken
 
        await user.save({validateBeforeSave:false})
 
@@ -181,8 +181,35 @@ const loginUser = asyncHandler(async(req,res,next)=>{
 
 })
 
-export {userRegister, loginUser}
+const logoutUser = asyncHandler(async(req,res)=>{
+    // WHAT WE CANNOT DO
+    // So kese logout kr skte h socho DB mai agr direct jaaye toh kis bases pr search maare sochoo
+    // id->No because koi instance nahi h DB ka , User.findOne() bhi nahi lga skte kyuki excess hi nahi h kisi chiz ka
 
-const generateRefreshAndAccessToke = (userId) =>{
-    
-}
+    // WHAT WE CAN DO
+    // hum logged in user ki cookies ko hata skte h esa esa kuch kr skte h so kyu na ek middleware bana de
+    // jo hamare req ko access dede user ka token ki madad se so lets see...
+    // yeh middleware help krega user ko verify krne ke liye uske tokens se and then usse hume _id ka access and then vaha se DB ka access
+
+    User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set:{refreshToken: undefined}
+        },
+        {
+            new:true
+        }
+    )
+
+    const options = {
+        httpOnly:true,
+        secure:true
+    }
+
+    res.status(200)
+    .clearCookie("AccessToken",options)
+    .clearCookie("RefreshToken",options)
+    .json(new MyApiResponse(200, {}, "Logged Out User"))
+})
+
+export {userRegister, loginUser, logoutUser}
